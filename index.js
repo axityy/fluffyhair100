@@ -1,36 +1,49 @@
-import express from "express";
-import cors from "cors";
-
+const express = require("express");
+const fs = require("fs");
 const app = express();
-app.use(cors());
-app.use(express.json());
 
-// TEMPORARY in-memory license store
-// You will later replace this with PostgreSQL
-let licenses = {
-    "ABCD-1234-TEST": { hwid: null }
-};
+app.use(express.json());
 
 app.post("/verify", (req, res) => {
     const { key, hwid } = req.body;
 
-    if (!licenses[key]) {
-        return res.json({ success: false, message: "Invalid key" });
+    let data = JSON.parse(fs.readFileSync("keys.json"));
+
+    // CHECK: key exists?
+    if (!data[key]) {
+        return res.json({
+            success: false,
+            message: "Invalid key"
+        });
     }
 
-    // First-time activation → bind HWID
-    if (licenses[key].hwid === null) {
-        licenses[key].hwid = hwid;
-        return res.json({ success: true, message: "Key activated" });
+    // If key exists but has NO HWID stored → bind it to this hwid
+    if (data[key].hwid === null) {
+        data[key].hwid = hwid;
+
+        fs.writeFileSync("keys.json", JSON.stringify(data, null, 4));
+
+        return res.json({
+            success: true,
+            message: "Key activated",
+            hwidLocked: true
+        });
     }
 
-    // If HWID does not match
-    if (licenses[key].hwid !== hwid) {
-        return res.json({ success: false, message: "HWID mismatch" });
+    // If key already has HWID stored → check if same device
+    if (data[key].hwid !== hwid) {
+        return res.json({
+            success: false,
+            message: "HWID mismatch"
+        });
     }
 
-    // All good
-    return res.json({ success: true, message: "Key valid" });
+    // HWID matches → valid
+    return res.json({
+        success: true,
+        message: "Key valid",
+        hwidLocked: true
+    });
 });
 
 app.listen(10000, () => {
